@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Mint a fresh Fly deploy token and write it into .env without ever printing it.
 # The token value goes straight from flyctl into the file; nothing hits stdout.
-APP="${1:-amazon-price-check}"
+APP="${1:-amzn-price-check}"
 ENV_FILE="$(dirname "$0")/.env"
 
 {

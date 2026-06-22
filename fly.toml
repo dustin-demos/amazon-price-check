@@ -1,4 +1,4 @@
-app = 'amazon-price-check'
+app = 'amzn-price-check'
 primary_region = 'ord'
 
 [build]
