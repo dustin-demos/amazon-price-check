@@ -2,64 +2,65 @@
 const https = require('https')
 const zlib = require('zlib')
 
-const matches = [{
-  name: 'mobile',
-  open: '<span aria-hidden="true"> · </span>',
-  close: '<span aria-hidden="true"> · </span>'
-}]
-
+// Originally scraped a price out of a Google search result, but Google now requires JS and
+// returns no price to a plain request. Amazon's product page still serves the price server-side
+// in an `a-offscreen` span, so we read it straight from there. The module name and resolved
+// shape are unchanged so price-check.js keeps working as-is.
 const options = {
   headers: {
     'accept-encoding': 'gzip',
-    'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1'
+    'accept-language': 'en-US,en;q=0.9',
+    'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   }
+}
+
+const findPrice = (html) => {
+  // The first a-offscreen price on the page is the buy-box price, formatted like $23.64.
+  const match = html.match(/a-offscreen">(\$[0-9]+\.[0-9]{2})</)
+
+  return match ? match[1] : null
 }
 
 module.exports = function (asin) {
   const start = Date.now()
-  const url = 'https://www.google.com/search?q=site:amazon.com+' + asin
+  const url = 'https://www.amazon.com/dp/' + asin
   let bytes = 0
 
-  return new Promise(function (resolve, reject) {
+  return new Promise(function (resolve) {
     const req = https.get(url, options, function (res) {
-      const decompress = zlib.createUnzip()
+      const decompress = res.headers['content-encoding'] === 'gzip' ? zlib.createGunzip() : res
+
+      let html = ''
 
       decompress.on('data', function (chunk) {
-        chunk = chunk.toString()
-
-        for (let i = 0; i < matches.length; i++) {
-          const { name, open, close } = matches[i]
-
-          const openIndex = chunk.indexOf(open)
-          const closeIndex = chunk.indexOf(close, openIndex + 1)
-
-          if (openIndex > -1 && closeIndex > -1) {
-            req.abort()
-
-            if (name === 'mobile') {
-              const price = chunk.slice(openIndex + open.length, closeIndex)
-              const ms = Date.now() - start
-
-              resolve({ bytes, ms, price, asin, url })
-            }
-          }
-        }
+        bytes += Buffer.byteLength(chunk)
+        html += chunk.toString()
       })
 
       decompress.on('error', function (err) {
         console.log('Error >>', err)
-        resolve({ error: 'Failed to decompress a chunk from the request.' })
+        resolve({ error: 'Failed to decompress the response.' })
       })
 
-      res.on('data', function (chunk) {
-        bytes += Buffer.byteLength(chunk)
-        decompress.write(chunk)
+      decompress.on('end', function () {
+        const price = findPrice(html)
+
+        if (price) {
+          resolve({ bytes, ms: Date.now() - start, price, asin, url })
+        } else {
+          resolve({ error: 'Failed to find a price for the requested ASIN.' })
+        }
       })
 
-      res.on('end', function () {
-        console.log('End >>')
-        resolve({ error: 'Failed to find a price for the requested ASIN.' })
-      })
+      if (decompress !== res) {
+        res.on('data', function (chunk) {
+          decompress.write(chunk)
+        })
+
+        res.on('end', function () {
+          decompress.end()
+        })
+      }
     })
 
     req.on('error', function (err) {
