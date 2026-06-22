@@ -1,0 +1,44 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-fly:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-22.04
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+
+      # pocket/superstatic are git deps; npm 8 rewrites git+https to ssh for ls-remote, so force https.
+      - name: Force HTTPS for GitHub git deps
+        run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+
+      - name: Setup Node 16
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16'
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Build client
+        run: deno task client:build
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        run: flyctl deploy --config fly.toml --remote-only

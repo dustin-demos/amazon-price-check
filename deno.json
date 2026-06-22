@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-read --allow-env --node-modules-dir --unstable-detect-cjs main.ts",
+    "client:install": "npm install --no-audit --no-fund",
+    "client:compile": "env -i PATH=\"$PATH\" NODE_ENV=production make all",
+    "client:build": "deno task client:install && deno task client:compile"
+  },
+  "fmt": {
+    "lineWidth": 240,
+    "semiColons": false,
+    "singleQuote": true
+  },
+  "imports": {
+    "@std/http": "jsr:@std/http@^1.1.1"
+  }
+}
